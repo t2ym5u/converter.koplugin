@@ -25,6 +25,16 @@ local function lrequire(name)
     return package.loaded[key]
 end
 
+-- Shared modules (common/) are cached by name for every plugin at once: the
+-- guard makes sure an outdated copy, loaded by an old plugin still installed,
+-- is not the one this plugin gets (see common/module_guard.lua). Loaded by
+-- path, so no other plugin's copy can stand in for it.
+local function noop() end
+local guard_chunk = loadfile(_dir .. "common/module_guard.lua")
+local guard = guard_chunk and guard_chunk()(_dir .. "common/", "game_common_version.lua")
+    or { enter = noop, leave = noop }
+guard.enter()
+
 -- The game screen -- and the boards, word lists and puzzle banks it pulls
 -- in -- loads the first time the game is opened, not when KOReader starts:
 -- KOReader loads every plugin at startup and keeps it all session, so a
@@ -35,7 +45,9 @@ end
 local function lazyrequire(name)
     local saved = package.path
     package.path = _dir .. "?.lua;" .. _dir .. "common/?.lua;" .. saved
+    guard.enter()
     local ok, mod = pcall(lrequire, name)
+    guard.leave()
     package.path = saved
     if not package.path:find(_dir .. "common/?.lua", 1, true) then
         package.path = package.path .. ";" .. _dir .. "common/?.lua"
@@ -70,5 +82,7 @@ function Converter:addToMainMenu(menu_items)
         callback     = function() self:showGame() end,
     }
 end
+
+guard.leave()
 
 return Converter
